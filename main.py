@@ -1,6 +1,10 @@
+# -*- coding: utf-8 -*-
+
 import math
+import json
 import random
 from array import array
+from pathlib import Path
 
 import pygame
 
@@ -10,20 +14,24 @@ WIDTH = 900
 HEIGHT = 600
 FPS = 60
 
-# Szinek
-GREEN = (47, 150, 64)
-LIGHT_GREEN = (62, 175, 78)
-DARK_GREEN = (33, 112, 48)
-WHITE = (245, 245, 245)
-BLACK = (20, 20, 20)
-BLUE = (55, 100, 220)
-SKY_BLUE = (116, 183, 255)
-YELLOW = (245, 210, 65)
-ORANGE = (245, 145, 45)
-RED = (220, 55, 55)
-GRAY = (120, 120, 120)
-DARK_GRAY = (45, 45, 45)
-NET_COLOR = (218, 232, 245)
+# Modern, tiszta szinpaletta
+GREEN = (37, 142, 82)
+LIGHT_GREEN = (58, 174, 101)
+DARK_GREEN = (22, 98, 61)
+WHITE = (248, 250, 252)
+BLACK = (15, 23, 42)
+BLUE = (37, 99, 235)
+SKY_BLUE = (125, 211, 252)
+YELLOW = (250, 204, 21)
+ORANGE = (249, 115, 22)
+RED = (239, 68, 68)
+GRAY = (148, 163, 184)
+DARK_GRAY = (51, 65, 85)
+PANEL = (15, 23, 42)
+CARD = (30, 41, 59)
+CARD_HOVER = (51, 65, 85)
+MINT = (45, 212, 191)
+NET_COLOR = (226, 232, 240)
 SKIN = (245, 190, 135)
 
 # Palya es kapu meretei
@@ -44,29 +52,67 @@ KEEPER_WIDTH = 86
 KEEPER_HEIGHT = 46
 
 MAX_SHOTS = 10
+SAVE_FILE = Path("save_data.json")
 
 # A nehezseg a kapus ugyesseget es a loves pontatlansagat is befolyasolja.
 DIFFICULTIES = {
     "konnyu": {
-        "label": "Konnyu",
+        "label": "Könnyű",
         "keeper_speed": 0.045,
         "keeper_reach": 70,
         "keeper_reads_shot": 0.25,
         "bad_power_error": 75,
     },
     "normal": {
-        "label": "Normal",
+        "label": "Normál",
         "keeper_speed": 0.060,
         "keeper_reach": 95,
         "keeper_reads_shot": 0.45,
         "bad_power_error": 100,
     },
     "nehez": {
-        "label": "Nehez",
+        "label": "Nehéz",
         "keeper_speed": 0.078,
         "keeper_reach": 125,
         "keeper_reads_shot": 0.70,
         "bad_power_error": 125,
+    },
+}
+
+# Valaszthato csapatok. A ket szin a mez es a nadrag szine.
+TEAMS = {
+    "budapest": {"name": "Budapest FC", "shirt": RED, "shorts": WHITE},
+    "duna": {"name": "Duna SC", "shirt": BLUE, "shorts": WHITE},
+    "alfold": {"name": "Alföld United", "shirt": (22, 163, 74), "shorts": BLACK},
+    "balaton": {"name": "Balaton SE", "shirt": SKY_BLUE, "shorts": DARK_GRAY},
+    "matra": {"name": "Mátra AC", "shirt": (124, 58, 237), "shorts": WHITE},
+}
+
+# A loves tipusa a pontossagot, sebesseget es a kapus eselyet is modositja.
+SHOT_TYPES = {
+    "power": {
+        "name": "Erős lövés",
+        "speed_multiplier": 1.35,
+        "accuracy_multiplier": 1.30,
+        "keeper_read_bonus": -0.08,
+        "keeper_reach_bonus": -22,
+        "ideal_power": 0.78,
+    },
+    "placed": {
+        "name": "Helyezett lövés",
+        "speed_multiplier": 0.92,
+        "accuracy_multiplier": 0.55,
+        "keeper_read_bonus": 0.10,
+        "keeper_reach_bonus": 12,
+        "ideal_power": 0.66,
+    },
+    "panenka": {
+        "name": "Panenka",
+        "speed_multiplier": 0.66,
+        "accuracy_multiplier": 0.80,
+        "keeper_read_bonus": 0.24,
+        "keeper_reach_bonus": 34,
+        "ideal_power": 0.54,
     },
 }
 
@@ -101,22 +147,41 @@ def make_tone(frequency, duration, volume=0.35, wave="sine"):
     return pygame.mixer.Sound(buffer=samples.tobytes())
 
 
+def load_font(size, bold=False):
+    """Magyar karaktereket tamogato fontot tolt be.
+
+    Windows alatt a Segoe UI az elso valasztas, de mas rendszeren az Arial
+    vagy a DejaVu Sans is jo tartalek. Mindharom kezeli az ő es ű betuket.
+    """
+    font_path = pygame.font.match_font("segoeui,segoe ui,arial,dejavusans", bold=bold)
+    if font_path:
+        return pygame.font.Font(font_path, size)
+    return pygame.font.SysFont("arial", size, bold=bold)
+
+
 class PenaltyGame:
     def __init__(self):
         # A mixer elore beallitasa segit, hogy a generalt hangok jol szoljanak.
         pygame.mixer.pre_init(44100, -16, 1, 512)
         pygame.init()
-        pygame.display.set_caption("Tizenegyesrugo jatek")
+        pygame.display.set_caption("Tizenegyes játék")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
 
-        self.font = pygame.font.SysFont("arial", 24)
-        self.small_font = pygame.font.SysFont("arial", 19)
-        self.big_font = pygame.font.SysFont("arial", 44, bold=True)
+        self.small_font = load_font(18)
+        self.font = load_font(23)
+        self.medium_font = load_font(30, bold=True)
+        self.big_font = load_font(48, bold=True)
+        self.huge_font = load_font(64, bold=True)
 
         self.state = "menu"
         self.difficulty_key = "normal"
+        self.team_key = "budapest"
+        self.shot_type_key = "placed"
         self.menu_buttons = []
+        self.game_over_buttons = []
+        self.high_score = self.load_save_data()
+        self.high_score_checked = False
 
         # Latvanyeffektek allapotai
         self.flash_alpha = 0
@@ -133,6 +198,77 @@ class PenaltyGame:
     def difficulty(self):
         """Rovidites, hogy ne kelljen mindig a szotarban keresni."""
         return DIFFICULTIES[self.difficulty_key]
+
+    @property
+    def team(self):
+        """A kivalasztott csapat adatait adja vissza."""
+        return TEAMS[self.team_key]
+
+    @property
+    def shot_type(self):
+        """A kivalasztott loves tipus adatait adja vissza."""
+        return SHOT_TYPES[self.shot_type_key]
+
+    def load_save_data(self):
+        """Betolti a rekordokat a save_data.json fajlbol."""
+        default_data = {"best_goals": 0, "best_accuracy": 0}
+
+        if not SAVE_FILE.exists():
+            return default_data
+
+        try:
+            with SAVE_FILE.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return default_data
+
+        return {
+            "best_goals": int(data.get("best_goals", 0)),
+            "best_accuracy": int(data.get("best_accuracy", 0)),
+        }
+
+    def save_high_score(self):
+        """Elmenti a legjobb eredmenyt es pontossagot."""
+        try:
+            with SAVE_FILE.open("w", encoding="utf-8") as file:
+                json.dump(self.high_score, file, ensure_ascii=False, indent=2)
+        except OSError:
+            # Ha valamiert nem sikerul menteni, a jatek akkor is fusson tovabb.
+            pass
+
+    def update_high_score(self):
+        """A meccs vegen frissiti a rekordokat, ha jobb eredmeny szuletett."""
+        accuracy = self.get_accuracy()
+        changed = False
+
+        if self.goals > self.high_score["best_goals"]:
+            self.high_score["best_goals"] = self.goals
+            changed = True
+
+        if accuracy > self.high_score["best_accuracy"]:
+            self.high_score["best_accuracy"] = accuracy
+            changed = True
+
+        if changed:
+            self.save_high_score()
+
+    def get_accuracy(self):
+        """Szazalekos golpontossagot szamol."""
+        if self.total_shots == 0:
+            return 0
+        return round(self.goals / self.total_shots * 100)
+
+    def get_final_rating(self):
+        """Rovid szoveges ertekelest ad a megszerzett golok alapjan."""
+        if self.goals >= 9:
+            return "Világklasszis teljesítmény!"
+        if self.goals >= 7:
+            return "Remek sorozat, hidegvérű befejezésekkel."
+        if self.goals >= 5:
+            return "Stabil meccs, van mire építeni."
+        if self.goals >= 3:
+            return "Harcos próbálkozás, több pontosság kell."
+        return "Nehéz nap volt a tizenegyesponton."
 
     def create_sounds(self):
         """Letrehozza a jatek rovid hangjait. Hiba eseten csendben fut tovabb."""
@@ -158,7 +294,8 @@ class PenaltyGame:
         self.saves = 0
         self.misses = 0
         self.total_shots = 0
-        self.message = "Celozz egerrel, allitsd be az erot, majd SPACE vagy bal klikk!"
+        self.high_score_checked = False
+        self.message = "Célozz egérrel, időzítsd a lövéserőt, majd lőj!"
         self.message_timer = 0
         self.power = 0.5
         self.power_direction = 1
@@ -220,23 +357,31 @@ class PenaltyGame:
         self.shake_timer = 6
         self.shake_strength = 3
 
-        # Az idealis ero 70% korul van. Tul gyenge vagy tul eros loves pontatlanabb.
-        ideal_power = 0.70
+        # Minden loves tipusnak mas az idealis ereje.
+        ideal_power = self.shot_type["ideal_power"]
         power_error = abs(self.power - ideal_power)
         max_error = self.difficulty["bad_power_error"] * power_error
+        max_error *= self.shot_type["accuracy_multiplier"]
 
         target_x = self.aim_pos.x + random.uniform(-max_error, max_error)
         target_y = self.aim_pos.y + random.uniform(-max_error * 0.55, max_error * 0.55)
+
+        # A panenka kicsit magasabbra emeli a labdat, de lassabb es kockazatosabb.
+        if self.shot_type_key == "panenka":
+            target_y -= 18
+
         self.ball_target = pygame.Vector2(target_x, target_y)
 
-        # Eros loves gyorsabb, gyenge loves lassabb.
-        self.ball_speed = 0.026 + self.power * 0.030
+        # Eros loves gyorsabb, helyezett/panenka lassabb.
+        self.ball_speed = (0.026 + self.power * 0.030) * self.shot_type["speed_multiplier"]
         self.choose_keeper_target()
 
     def choose_keeper_target(self):
         """Kivalasztja, merre vetodik a kapus."""
-        read_chance = self.difficulty["keeper_reads_shot"]
-        reach = self.difficulty["keeper_reach"]
+        read_chance = self.difficulty["keeper_reads_shot"] + self.shot_type["keeper_read_bonus"]
+        read_chance = clamp(read_chance, 0.05, 0.92)
+        reach = self.difficulty["keeper_reach"] + self.shot_type["keeper_reach_bonus"]
+        reach = max(30, reach)
 
         # Jobb nehezsegen a kapus gyakrabban olvassa a loves iranyat.
         if random.random() < read_chance:
@@ -292,6 +437,9 @@ class PenaltyGame:
             self.message_timer -= 1
             if self.message_timer <= 0:
                 if self.total_shots >= MAX_SHOTS:
+                    if not self.high_score_checked:
+                        self.update_high_score()
+                        self.high_score_checked = True
                     self.change_state("game_over")
                 else:
                     self.reset_round()
@@ -338,13 +486,13 @@ class PenaltyGame:
 
         if not ball_in_goal:
             self.misses += 1
-            self.result = "MELLE!"
+            self.result = "Mellé!"
             self.flash_color = GRAY
             self.flash_alpha = 90
             self.play_sound("miss")
         elif keeper_rect.colliderect(ball_rect):
             self.saves += 1
-            self.result = "VEDES!"
+            self.result = "Védés!"
             self.flash_color = SKY_BLUE
             self.flash_alpha = 120
             self.shake_timer = 12
@@ -352,7 +500,7 @@ class PenaltyGame:
             self.play_sound("save")
         else:
             self.goals += 1
-            self.result = "GOOOL!"
+            self.result = "GÓÓÓL!"
             self.flash_color = YELLOW
             self.flash_alpha = 185
             self.shake_timer = 15
@@ -375,29 +523,116 @@ class PenaltyGame:
                 self.restart_game()
             if self.state == "menu":
                 if event.key == pygame.K_1:
-                    self.start_game("konnyu")
+                    self.difficulty_key = "konnyu"
                 elif event.key == pygame.K_2:
-                    self.start_game("normal")
+                    self.difficulty_key = "normal"
                 elif event.key == pygame.K_3:
-                    self.start_game("nehez")
+                    self.difficulty_key = "nehez"
+                elif event.key == pygame.K_RETURN:
+                    self.start_game(self.difficulty_key)
             elif self.state == "playing" and event.key == pygame.K_SPACE:
                 self.start_shot()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.state == "menu":
-                self.handle_menu_click(event.pos)
+                return self.handle_menu_click(event.pos)
             elif self.state == "playing":
                 self.start_shot()
             elif self.state == "game_over":
-                self.change_state("menu")
+                return self.handle_game_over_click(event.pos)
 
         return True
 
     def handle_menu_click(self, mouse_pos):
         """Megnezi, hogy a jatekos melyik menu gombra kattintott."""
-        for rect, difficulty_key in self.menu_buttons:
+        for rect, action, value in self.menu_buttons:
             if rect.collidepoint(mouse_pos):
-                self.start_game(difficulty_key)
+                if action == "difficulty":
+                    self.difficulty_key = value
+                elif action == "team":
+                    self.team_key = value
+                elif action == "shot_type":
+                    self.shot_type_key = value
+                elif action == "start":
+                    self.start_game(self.difficulty_key)
+                elif action == "exit":
+                    return False
+        return True
+
+    def handle_game_over_click(self, mouse_pos):
+        """Kezeli a jatek vege kepernyo gombjait."""
+        for rect, action in self.game_over_buttons:
+            if rect.collidepoint(mouse_pos):
+                if action == "restart":
+                    self.restart_game()
+                elif action == "menu":
+                    self.change_state("menu")
+                elif action == "exit":
+                    return False
+        return True
+
+    def draw_text(self, text, font, color, center=None, topleft=None, shadow=True):
+        """Szoveget rajzol arnyekkal, hogy a palyan is jol olvashato legyen."""
+        if shadow:
+            shadow_surface = font.render(text, True, (0, 0, 0))
+            shadow_rect = shadow_surface.get_rect()
+            if center:
+                shadow_rect.center = (center[0] + 2, center[1] + 3)
+            elif topleft:
+                shadow_rect.topleft = (topleft[0] + 2, topleft[1] + 3)
+            self.screen.blit(shadow_surface, shadow_rect)
+
+        surface = font.render(text, True, color)
+        rect = surface.get_rect()
+        if center:
+            rect.center = center
+        elif topleft:
+            rect.topleft = topleft
+        self.screen.blit(surface, rect)
+        return rect
+
+    def draw_panel(self, rect, color=PANEL, alpha=215, border_color=(71, 85, 105)):
+        """Attetszo, lekerekitett panelt rajzol arnyekkal."""
+        shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(shadow, (0, 0, 0, 80), shadow.get_rect(), border_radius=18)
+        self.screen.blit(shadow, (rect.x + 6, rect.y + 8))
+
+        panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (*color, alpha), panel.get_rect(), border_radius=18)
+        pygame.draw.rect(panel, (*border_color, 210), panel.get_rect(), 2, border_radius=18)
+        self.screen.blit(panel, rect.topleft)
+
+    def draw_button(self, rect, text, active=False, font=None):
+        """Szep gomb hover effekttel. Visszaadja, hogy az eger felette van-e."""
+        if font is None:
+            font = self.font
+
+        mouse_pos = pygame.mouse.get_pos()
+        hovered = rect.collidepoint(mouse_pos)
+
+        if active:
+            color = ORANGE
+            border = YELLOW
+        elif hovered:
+            color = CARD_HOVER
+            border = MINT
+        else:
+            color = CARD
+            border = GRAY
+
+        shadow_rect = rect.move(0, 6)
+        pygame.draw.rect(self.screen, (0, 0, 0), shadow_rect, border_radius=12)
+        pygame.draw.rect(self.screen, color, rect, border_radius=12)
+        pygame.draw.rect(self.screen, border, rect, 2, border_radius=12)
+        self.draw_text(text, font, WHITE, center=rect.center)
+        return hovered
+
+    def draw_stat_card(self, rect, label, value, accent=MINT):
+        """Kis statisztika kartya cimkevel es nagy szammal."""
+        self.draw_panel(rect, color=CARD, alpha=230, border_color=(71, 85, 105))
+        pygame.draw.circle(self.screen, accent, (rect.x + 22, rect.y + 25), 6)
+        self.draw_text(label, self.small_font, GRAY, topleft=(rect.x + 38, rect.y + 16))
+        self.draw_text(str(value), self.medium_font, WHITE, center=(rect.centerx, rect.y + 62))
 
     def draw_field(self):
         """Kirajzolja a latvanyosabb palyat, vonalakat es a kaput."""
@@ -456,14 +691,18 @@ class PenaltyGame:
         y = int(PLAYER_POS.y)
         kick = self.ball_progress if self.shooting else 0
         leg_swing = int(20 * math.sin(kick * math.pi))
+        shirt_color = self.team["shirt"]
+        shorts_color = self.team["shorts"]
 
         pygame.draw.ellipse(self.screen, (20, 70, 30), (x - 32, y + 28, 70, 14))
         pygame.draw.circle(self.screen, SKIN, (x, y - 72), 17)
-        pygame.draw.rect(self.screen, RED, (x - 20, y - 55, 40, 50), border_radius=8)
+        pygame.draw.rect(self.screen, shirt_color, (x - 20, y - 55, 40, 50), border_radius=8)
+        pygame.draw.line(self.screen, WHITE, (x - 12, y - 50), (x - 12, y - 10), 3)
+        pygame.draw.line(self.screen, WHITE, (x + 12, y - 50), (x + 12, y - 10), 3)
         pygame.draw.line(self.screen, SKIN, (x - 18, y - 42), (x - 42, y - 22), 7)
         pygame.draw.line(self.screen, SKIN, (x + 18, y - 42), (x + 38, y - 18), 7)
-        pygame.draw.line(self.screen, BLUE, (x - 10, y - 5), (x - 26, y + 30), 8)
-        pygame.draw.line(self.screen, BLUE, (x + 10, y - 5), (x + 23 + leg_swing, y + 30), 8)
+        pygame.draw.line(self.screen, shorts_color, (x - 10, y - 5), (x - 26, y + 30), 8)
+        pygame.draw.line(self.screen, shorts_color, (x + 10, y - 5), (x + 23 + leg_swing, y + 30), 8)
         pygame.draw.circle(self.screen, BLACK, (x - 27, y + 34), 5)
         pygame.draw.circle(self.screen, BLACK, (x + 25 + leg_swing, y + 34), 5)
 
@@ -538,43 +777,59 @@ class PenaltyGame:
         pygame.draw.line(self.screen, ORANGE, (int(BALL_START.x), int(BALL_START.y)), (x, y), 2)
 
     def draw_power_bar(self):
-        """Kirajzolja a lovesero csikot."""
+        """Kirajzolja a modern lövéserő csíkot."""
         bar_x = 260
         bar_y = 475
         bar_w = 380
-        bar_h = 22
+        bar_h = 24
 
-        pygame.draw.rect(self.screen, DARK_GRAY, (bar_x, bar_y, bar_w, bar_h), border_radius=8)
+        self.draw_panel(pygame.Rect(bar_x - 24, bar_y - 48, bar_w + 48, 84), color=PANEL, alpha=180)
+        pygame.draw.rect(self.screen, DARK_GRAY, (bar_x, bar_y, bar_w, bar_h), border_radius=12)
         fill_w = int(bar_w * self.power)
 
-        # A kozepes-eros loves a legjobb, ezt sarga jelolo mutatja.
-        pygame.draw.rect(self.screen, ORANGE, (bar_x, bar_y, fill_w, bar_h), border_radius=8)
-        ideal_x = bar_x + int(bar_w * 0.70)
+        # A közepes-erős lövés a legjobb, ezt sárga jelölő mutatja.
+        ideal_power = self.shot_type["ideal_power"]
+        fill_color = MINT if abs(self.power - ideal_power) <= 0.12 else ORANGE
+        pygame.draw.rect(self.screen, fill_color, (bar_x, bar_y, fill_w, bar_h), border_radius=12)
+        ideal_x = bar_x + int(bar_w * ideal_power)
         pygame.draw.line(self.screen, YELLOW, (ideal_x, bar_y - 5), (ideal_x, bar_y + bar_h + 5), 3)
-        pygame.draw.rect(self.screen, WHITE, (bar_x, bar_y, bar_w, bar_h), 2, border_radius=8)
+        pygame.draw.rect(self.screen, WHITE, (bar_x, bar_y, bar_w, bar_h), 2, border_radius=12)
 
-        label = self.small_font.render("Lovesero", True, WHITE)
-        self.screen.blit(label, (bar_x, bar_y - 28))
+        self.draw_text("Lövéserő", self.small_font, WHITE, topleft=(bar_x, bar_y - 31))
+        self.draw_text("ideális", self.small_font, YELLOW, center=(ideal_x, bar_y + 43))
 
     def draw_score(self):
-        """Kirajzolja az aktualis allast."""
-        score = (
-            f"Loves: {self.total_shots}/{MAX_SHOTS}   Golok: {self.goals}   "
-            f"Vedesek: {self.saves}   Melle: {self.misses}   "
-            f"Szint: {self.difficulty['label']}"
-        )
-        score_surface = self.font.render(score, True, WHITE)
-        pygame.draw.rect(self.screen, (0, 0, 0), (14, 12, 650, 42), border_radius=8)
-        self.screen.blit(score_surface, (24, 20))
+        """Kirajzolja az aktualis allast tagolt stat panelen."""
+        panel_rect = pygame.Rect(16, 12, 868, 78)
+        self.draw_panel(panel_rect, color=PANEL, alpha=210)
+
+        stats = [
+            ("Összes lövés", f"{self.total_shots}/{MAX_SHOTS}", WHITE),
+            ("Gól", self.goals, YELLOW),
+            ("Védés", self.saves, SKY_BLUE),
+            ("Mellé", self.misses, RED),
+            ("Szint", self.difficulty["label"], MINT),
+        ]
+
+        for index, (label, value, color) in enumerate(stats):
+            x = 38 + index * 170
+            self.draw_text(label, self.small_font, GRAY, topleft=(x, 22), shadow=False)
+            self.draw_text(str(value), self.font, color, topleft=(x, 42))
+
+        detail = f"{self.team['name']}   |   {self.shot_type['name']}"
+        self.draw_text(detail, self.small_font, MINT, center=(WIDTH // 2, 76), shadow=False)
 
         if self.result:
-            message_surface = self.big_font.render(self.message, True, YELLOW)
+            message_font = self.big_font
+            message_color = YELLOW
         else:
-            message_surface = self.font.render(self.message, True, WHITE)
+            message_font = self.font
+            message_color = WHITE
 
+        message_surface = message_font.render(self.message, True, message_color)
         message_rect = message_surface.get_rect(center=(WIDTH // 2, 555))
-        pygame.draw.rect(self.screen, BLACK, message_rect.inflate(28, 14), border_radius=8)
-        self.screen.blit(message_surface, message_rect)
+        pygame.draw.rect(self.screen, BLACK, message_rect.inflate(34, 16), border_radius=12)
+        self.draw_text(self.message, message_font, message_color, center=(WIDTH // 2, 555))
 
     def draw_particles(self):
         """Kirajzolja a gol utani apro reszecskeket."""
@@ -583,62 +838,105 @@ class PenaltyGame:
             pygame.draw.circle(self.screen, particle["color"], (int(pos.x), int(pos.y)), 4)
 
     def draw_menu(self):
-        """Kezdomenu nehezsegi szintekkel."""
+        """Kezdőmenü nehézségi szintekkel."""
         self.draw_field()
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 70))
+        overlay.fill((0, 0, 0, 86))
         self.screen.blit(overlay, (0, 0))
 
-        title = self.big_font.render("Tizenegyesrugo jatek", True, WHITE)
-        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 150)))
+        panel_rect = pygame.Rect(50, 54, 800, 500)
+        self.draw_panel(panel_rect, color=PANEL, alpha=228, border_color=(94, 234, 212))
 
-        subtitle = self.font.render("Valassz nehezseget: 1, 2, 3 vagy kattintas", True, WHITE)
-        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 205)))
+        self.draw_text("Tizenegyes játék", self.big_font, WHITE, center=(WIDTH // 2, 105))
+        self.draw_text("Állítsd össze a csapatot és a lövési stílust", self.small_font, GRAY, center=(WIDTH // 2, 142))
+        self.draw_text(
+            f"Rekord: {self.high_score['best_goals']} gól   Legjobb pontosság: {self.high_score['best_accuracy']}%",
+            self.small_font,
+            MINT,
+            center=(WIDTH // 2, 174),
+        )
 
         self.menu_buttons = []
-        button_data = [("konnyu", "1 - Konnyu"), ("normal", "2 - Normal"), ("nehez", "3 - Nehez")]
-        for index, (difficulty_key, text) in enumerate(button_data):
-            rect = pygame.Rect(0, 0, 230, 54)
-            rect.center = (WIDTH // 2, 285 + index * 72)
-            self.menu_buttons.append((rect, difficulty_key))
-            color = ORANGE if difficulty_key == self.difficulty_key else DARK_GRAY
-            pygame.draw.rect(self.screen, color, rect, border_radius=8)
-            pygame.draw.rect(self.screen, WHITE, rect, 2, border_radius=8)
-            label = self.font.render(text, True, WHITE)
-            self.screen.blit(label, label.get_rect(center=rect.center))
+        self.draw_text("Nehézség", self.font, WHITE, topleft=(92, 214))
+        difficulty_data = [("konnyu", "1  Könnyű"), ("normal", "2  Normál"), ("nehez", "3  Nehéz")]
+        for index, (difficulty_key, text) in enumerate(difficulty_data):
+            rect = pygame.Rect(92 + index * 170, 250, 150, 44)
+            self.menu_buttons.append((rect, "difficulty", difficulty_key))
+            self.draw_button(rect, text, active=difficulty_key == self.difficulty_key, font=self.small_font)
 
-        hint = self.small_font.render("ESC: kilepes   R: ujrakezdes jatek kozben", True, WHITE)
-        self.screen.blit(hint, hint.get_rect(center=(WIDTH // 2, 535)))
+        self.draw_text("Csapat", self.font, WHITE, topleft=(92, 315))
+        for index, (team_key, team_data) in enumerate(TEAMS.items()):
+            rect = pygame.Rect(92 + index * 150, 352, 132, 48)
+            self.menu_buttons.append((rect, "team", team_key))
+            self.draw_button(rect, team_data["name"], active=team_key == self.team_key, font=self.small_font)
+            pygame.draw.circle(self.screen, team_data["shirt"], (rect.x + 18, rect.centery), 8)
+            pygame.draw.circle(self.screen, team_data["shorts"], (rect.x + 34, rect.centery), 8)
+
+        self.draw_text("Lövéstípus", self.font, WHITE, topleft=(92, 420))
+        shot_data = list(SHOT_TYPES.items())
+        for index, (shot_key, shot_data_item) in enumerate(shot_data):
+            rect = pygame.Rect(92 + index * 190, 456, 170, 44)
+            self.menu_buttons.append((rect, "shot_type", shot_key))
+            self.draw_button(rect, shot_data_item["name"], active=shot_key == self.shot_type_key, font=self.small_font)
+
+        start_rect = pygame.Rect(640, 242, 170, 56)
+        exit_rect = pygame.Rect(640, 500, 170, 42)
+        self.menu_buttons.append((start_rect, "start", None))
+        self.menu_buttons.append((exit_rect, "exit", None))
+        self.draw_button(start_rect, "Meccs indítása", active=True, font=self.small_font)
+        self.draw_button(exit_rect, "Kilépés", font=self.small_font)
+
+        hint = "ENTER: indítás   1-3: nehézség   SPACE / bal klikk: lövés játék közben"
+        self.draw_text(hint, self.small_font, GRAY, center=(WIDTH // 2, 575))
 
     def draw_game_over(self):
-        """Jatek vege kepernyo vegso osszesitessel."""
+        """Játék vége képernyő végső összesítéssel."""
+        if not self.high_score_checked:
+            self.update_high_score()
+            self.high_score_checked = True
+
         self.draw_field()
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 85))
+        overlay.fill((0, 0, 0, 96))
         self.screen.blit(overlay, (0, 0))
 
-        title = self.big_font.render("Jatek vege", True, YELLOW)
-        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 145)))
+        panel_rect = pygame.Rect(130, 70, 640, 470)
+        self.draw_panel(panel_rect, color=PANEL, alpha=232, border_color=(250, 204, 21))
+        self.draw_text("Játék vége", self.huge_font, YELLOW, center=(WIDTH // 2, 130))
 
-        accuracy = 0
-        if self.total_shots > 0:
-            accuracy = round(self.goals / self.total_shots * 100)
+        accuracy = self.get_accuracy()
 
-        lines = [
-            f"Nehezseg: {self.difficulty['label']}",
-            f"Osszes loves: {self.total_shots}",
-            f"Golok: {self.goals}",
-            f"Vedesek: {self.saves}",
-            f"Melle lovesek: {self.misses}",
-            f"Golpontossag: {accuracy}%",
+        setup = f"{self.team['name']}   |   {self.shot_type['name']}   |   {self.difficulty['label']}"
+        self.draw_text(setup, self.small_font, GRAY, center=(WIDTH // 2, 178))
+        self.draw_text(self.get_final_rating(), self.font, WHITE, center=(WIDTH // 2, 205))
+
+        cards = [
+            ("Összes lövés", self.total_shots, WHITE),
+            ("Gól", self.goals, YELLOW),
+            ("Védés", self.saves, SKY_BLUE),
+            ("Mellé", self.misses, RED),
+            ("Pontosság", f"{accuracy}%", MINT),
+            ("Rekord", f"{self.high_score['best_goals']} gól", ORANGE),
         ]
 
-        for index, line in enumerate(lines):
-            text = self.font.render(line, True, WHITE)
-            self.screen.blit(text, text.get_rect(center=(WIDTH // 2, 225 + index * 38)))
+        for index, (label, value, accent) in enumerate(cards):
+            col = index % 3
+            row = index // 3
+            rect = pygame.Rect(190 + col * 205, 245 + row * 92, 170, 76)
+            self.draw_stat_card(rect, label, value, accent)
 
-        restart = self.font.render("R: uj jatek   Kattintas: menu   ESC: kilepes", True, YELLOW)
-        self.screen.blit(restart, restart.get_rect(center=(WIDTH // 2, 520)))
+        best_line = f"Legjobb pontosság: {self.high_score['best_accuracy']}%"
+        self.draw_text(best_line, self.small_font, MINT, center=(WIDTH // 2, 425))
+
+        self.game_over_buttons = []
+        button_data = [
+            (pygame.Rect(212, 456, 180, 48), "restart", "Új játék"),
+            (pygame.Rect(410, 456, 150, 48), "menu", "Menü"),
+            (pygame.Rect(578, 456, 150, 48), "exit", "Kilépés"),
+        ]
+        for rect, action, text in button_data:
+            self.game_over_buttons.append((rect, action))
+            self.draw_button(rect, text, active=action == "restart")
 
     def draw_playing(self):
         """Kirajzolja a jatek kozbeni kepernyot."""
