@@ -2,7 +2,7 @@
 
 import pygame
 
-from .settings import CARD, CARD_HOVER, GRAY, MINT, ORANGE, PANEL, WHITE, YELLOW
+from .settings import CARD, CARD_HOVER, GRAY, MINT, PANEL, WHITE, YELLOW
 
 
 def load_font(size, bold=False):
@@ -20,6 +20,7 @@ def load_font(size, bold=False):
 def create_fonts():
     """Egy helyen készíti el a játékban használt betűméreteket."""
     return {
+        "tiny": load_font(15),
         "small": load_font(18),
         "normal": load_font(23),
         "medium": load_font(30, bold=True),
@@ -67,7 +68,7 @@ def draw_button(screen, rect, text, font, active=False):
     hovered = rect.collidepoint(mouse_pos)
 
     if active:
-        color = ORANGE
+        color = (20, 184, 166)
         border = YELLOW
     elif hovered:
         color = CARD_HOVER
@@ -80,6 +81,12 @@ def draw_button(screen, rect, text, font, active=False):
     pygame.draw.rect(screen, (0, 0, 0), shadow_rect, border_radius=12)
     pygame.draw.rect(screen, color, rect, border_radius=12)
     pygame.draw.rect(screen, border, rect, 2, border_radius=12)
+
+    if active:
+        # Egy vékony belső keret egyértelműbbé teszi, melyik opció aktív.
+        inner_rect = rect.inflate(-8, -8)
+        pygame.draw.rect(screen, (204, 251, 241), inner_rect, 1, border_radius=9)
+
     draw_text(screen, text, font, WHITE, center=rect.center)
     return hovered
 

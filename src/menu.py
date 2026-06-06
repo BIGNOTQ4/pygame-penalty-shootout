@@ -5,6 +5,7 @@ import pygame
 from . import ui
 from .settings import (
     CARD,
+    CARD_HOVER,
     GRAY,
     HEIGHT,
     MAX_SHOTS,
@@ -19,6 +20,36 @@ from .settings import (
     WIDTH,
     YELLOW,
 )
+
+
+def draw_team_button(screen, fonts, rect, team_data, active):
+    """Csapatgomb külön mezszín jelölőkkel és jól olvasható csapatnévvel."""
+    hovered = rect.collidepoint(pygame.mouse.get_pos())
+    if active:
+        fill_color = (20, 184, 166)
+        border_color = YELLOW
+        text_color = WHITE
+    elif hovered:
+        fill_color = CARD_HOVER
+        border_color = MINT
+        text_color = WHITE
+    else:
+        fill_color = CARD
+        border_color = GRAY
+        text_color = WHITE
+
+    pygame.draw.rect(screen, (0, 0, 0), rect.move(0, 5), border_radius=12)
+    pygame.draw.rect(screen, fill_color, rect, border_radius=12)
+    pygame.draw.rect(screen, border_color, rect, 2, border_radius=12)
+
+    if active:
+        pygame.draw.rect(screen, (204, 251, 241), rect.inflate(-8, -8), 1, border_radius=9)
+
+    # A pöttyök saját bal oldali sávot kapnak, így nem lógnak rá a szövegre.
+    dot_x = rect.x + 17
+    pygame.draw.circle(screen, team_data["shirt"], (dot_x, rect.centery - 7), 7)
+    pygame.draw.circle(screen, team_data["shorts"], (dot_x, rect.centery + 8), 7)
+    ui.draw_text(screen, team_data["name"], fonts["tiny"], text_color, topleft=(rect.x + 34, rect.y + 15))
 
 
 def draw_menu(screen, fonts, draw_field, game):
@@ -51,11 +82,9 @@ def draw_menu(screen, fonts, draw_field, game):
 
     ui.draw_text(screen, "Csapat", fonts["normal"], WHITE, topleft=(92, 315))
     for index, (team_key, team_data) in enumerate(TEAMS.items()):
-        rect = pygame.Rect(92 + index * 150, 352, 132, 48)
+        rect = pygame.Rect(92 + index * 150, 352, 142, 48)
         game.menu_buttons.append((rect, "team", team_key))
-        ui.draw_button(screen, rect, team_data["name"], fonts["small"], active=team_key == game.team_key)
-        pygame.draw.circle(screen, team_data["shirt"], (rect.x + 18, rect.centery), 8)
-        pygame.draw.circle(screen, team_data["shorts"], (rect.x + 34, rect.centery), 8)
+        draw_team_button(screen, fonts, rect, team_data, active=team_key == game.team_key)
 
     ui.draw_text(screen, "Lövéstípus", fonts["normal"], WHITE, topleft=(92, 420))
     for index, (shot_key, shot_data) in enumerate(SHOT_TYPES.items()):
@@ -70,8 +99,14 @@ def draw_menu(screen, fonts, draw_field, game):
     ui.draw_button(screen, start_rect, "Meccs indítása", fonts["small"], active=True)
     ui.draw_button(screen, exit_rect, "Kilépés", fonts["small"])
 
+    footer_rect = pygame.Rect(118, 558, 664, 34)
+    footer = pygame.Surface((footer_rect.width, footer_rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(footer, (*PANEL, 150), footer.get_rect(), border_radius=12)
+    pygame.draw.rect(footer, (*MINT, 90), footer.get_rect(), 1, border_radius=12)
+    screen.blit(footer, footer_rect.topleft)
+
     hint = "ENTER: indítás   1-3: nehézség   SPACE / bal klikk: lövés játék közben"
-    ui.draw_text(screen, hint, fonts["small"], GRAY, center=(WIDTH // 2, 575))
+    ui.draw_text(screen, hint, fonts["tiny"], WHITE, center=footer_rect.center, shadow=False)
 
 
 def draw_game_over(screen, fonts, draw_field, game):
