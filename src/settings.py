@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from pathlib import Path
-
 import pygame
 
 
@@ -10,7 +8,6 @@ WIDTH = 900
 HEIGHT = 600
 FPS = 60
 MAX_SHOTS = 10
-SAVE_FILE = Path("save_data.json")
 
 # Modern, tiszta színpaletta
 GREEN = (37, 142, 82)
