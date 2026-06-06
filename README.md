@@ -1,84 +1,115 @@
-# Tizenegyesrugo jatek
+# Tizenegyes játék
 
-Egy egyszeru, grafikus focis tizenegyesrugo jatek Pythonban, Pygame hasznalataval. A jatekos egerrel celoz, loveserot idozit, majd megprobal golt loni a veletlenszeruen vetodo kapus mellett.
+Egy grafikus focis tizenegyesrúgó játék Pythonban, Pygame használatával. A játékos csapatot, nehézséget és lövéstípust választ, egérrel céloz, lövéserőt időzít, majd megpróbál gólt lőni a vetődő kapus mellett.
 
-## Funkciok
+## Funkciók
 
 - 900x600-as Pygame ablak
-- Kezdomenu nehezsegi szint valasztassal
-- Konnyu, normal es nehez jatekmod
-- Egeres celzas
-- Mozgo lovesero csik
-- 10 loveses jatekmenet
-- Jatek vege kepernyo vegso osszesitessel
-- Gol, vedes es melle loves logika
-- Pontszamok: golok, vedesek, melle lovesek, osszes loves
-- Szebb focipalya es reszletesebb kapuhalo
-- Egyszeru jatekosfigura rugo animacioval
-- Latvanyosabb kapusvetodes
-- Labdaanimacio es forgaseffekt
-- Hangok loveshez, golhoz, vedeshez es melle loveshez
-- Golnal villanas, kepernyorazkodas es reszecskeeffekt
+- Modern, paneles UI gombokkal, hover effektekkel és jól olvasható szövegekkel
+- Magyar ékezetes felület, például ő és ű karakterekkel
+- Kezdőmenü nehézségi szint választással
+- Könnyű, normál és nehéz játékmód
+- Csapatválasztás legalább 5 különböző mezszínnel
+- Lövéstípusok: erős lövés, helyezett lövés, panenka
+- A lövéstípus befolyásolja a sebességet, pontosságot és védési esélyt
+- Egeres célzás
+- Mozgó lövéserő csík
+- 10 lövéses játékmenet
+- Játék vége képernyő végső összesítéssel és értékeléssel
+- High score mentés és betöltés `save_data.json` fájlból
+- Gól, védés és mellé lövés logika
+- Pontszámok: gólok, védések, mellé lövések, összes lövés, pontosság
+- Szebb focipálya és részletesebb kapuháló
+- Egyszerű játékosfigura rúgó animációval
+- Látványosabb kapusvetődés
+- Labdaanimáció és forgáseffekt
+- Generált hangok lövéshez, gólhoz, védéshez és mellé lövéshez
+- Gólnál villanás, képernyőrázkódás és részecskeeffekt
+- Moduláris, többfájlos `src` projektstruktúra
 
-## Iranyitas
+## Irányítás
 
-- Eger mozgatasa: celzas
-- SPACE: loves
-- Bal egergomb: loves vagy menuvalasztas
-- 1: konnyu nehezseg
-- 2: normal nehezseg
-- 3: nehez nehezseg
-- R: ujrakezdes
-- ESC: kilepes
+- Egér mozgatása: célzás
+- SPACE: lövés
+- Bal egérgomb: lövés vagy menüválasztás
+- 1: könnyű nehézség
+- 2: normál nehézség
+- 3: nehéz nehézség
+- ENTER: meccs indítása a főmenüből
+- R: újrakezdés
+- ESC: kilépés
 
-## Telepites
+## Telepítés
 
-1. Hozz letre egy virtualis kornyezetet:
+1. Hozz létre egy virtuális környezetet:
 
 ```powershell
 python -m venv .venv
 ```
 
-2. Aktivald a virtualis kornyezetet Windows PowerShellben:
+2. Aktiváld a virtuális környezetet Windows PowerShellben:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-3. Telepitsd a fuggosegeket:
+3. Telepítsd a függőségeket:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-## Futtatas
+## Futtatás
 
 ```powershell
 python main.py
 ```
 
-## Hasznalt technologiak
+## Használt technológiák
 
 - Python
 - Pygame
 
-## Projektstruktura
+## Projektstruktúra
 
 ```text
 Foca_game/
 |-- main.py
 |-- requirements.txt
 |-- README.md
-`-- .gitignore
+|-- .gitignore
+|-- save_data.json
+`-- src/
+    |-- __init__.py
+    |-- game.py
+    |-- menu.py
+    |-- ui.py
+    |-- sounds.py
+    |-- save_manager.py
+    |-- player.py
+    |-- goalkeeper.py
+    `-- settings.py
 ```
 
-## Jovobeli fejlesztesi otletek
+## Modulok szerepe
 
-- Sajat kep- es hangfajlok hasznalata
-- Kapus es jatekos sprite-ok
-- Bajnoksag vagy karrier mod
-- Toplista
-- Tobbfajta stadion vagy palya
+- `main.py`: csak a belépési pont, létrehozza és elindítja a játékot
+- `src/game.py`: fő játékmenet, fő ciklus, állapotkezelés és lövéslogika
+- `src/menu.py`: főmenü és játék vége képernyő
+- `src/ui.py`: UI segédek, gombok, panelek, szöveg és fontbetöltés
+- `src/sounds.py`: kódból generált hanghatások
+- `src/save_manager.py`: high score mentése és betöltése
+- `src/player.py`: játékosfigura rajzolása és rúgó animációja
+- `src/goalkeeper.py`: kapuslogika és kapus rajzolása
+- `src/settings.py`: konstansok, színek, csapatok és lövéstípusok
+
+## Jövőbeli fejlesztési ötletek
+
+- Saját kép- és hangfájlok használata
+- Kapus és játékos sprite-ok
+- Bajnokság vagy karrier mód
+- Részletesebb toplista több mentett eredménnyel
+- Többfajta stadion vagy pálya
 - Mobilisabb kapus AI
-- Nehezsegi szintek finomhangolasa
-- Teljes kepernyos mod
+- Nehézségi szintek finomhangolása
+- Teljes képernyős mód
